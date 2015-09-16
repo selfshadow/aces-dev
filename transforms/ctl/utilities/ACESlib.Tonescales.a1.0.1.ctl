@@ -21,9 +21,9 @@ struct SegmentedSplineParams_c5
 {
   float coefsLow[6];    // coefs for B-spline between minPoint and midPoint (units of log luminance)
   float coefsHigh[6];   // coefs for B-spline between midPoint and maxPoint (units of log luminance)
-  SplineMapPoint minPoint; // {luminance, luminance} linear extension below this
-  SplineMapPoint midPoint; // {luminance, luminance} 
-  SplineMapPoint maxPoint; // {luminance, luminance} linear extension above this
+  SplineMapPoint minPoint; // {log luminance, log luminance} linear extension below this
+  SplineMapPoint midPoint; // {log luminance, log luminance} 
+  SplineMapPoint maxPoint; // {log luminance, log luminance} linear extension above this
   float slopeLow;       // log-log slope of low linear extension
   float slopeHigh;      // log-log slope of high linear extension
 };
@@ -32,9 +32,9 @@ struct SegmentedSplineParams_c9
 {
   float coefsLow[10];    // coefs for B-spline between minPoint and midPoint (units of log luminance)
   float coefsHigh[10];   // coefs for B-spline between midPoint and maxPoint (units of log luminance)
-  SplineMapPoint minPoint; // {luminance, luminance} linear extension below this
-  SplineMapPoint midPoint; // {luminance, luminance} 
-  SplineMapPoint maxPoint; // {luminance, luminance} linear extension above this
+  SplineMapPoint minPoint; // {log luminance, log luminance} linear extension below this
+  SplineMapPoint midPoint; // {log luminance, log luminance} 
+  SplineMapPoint maxPoint; // {log luminance, log luminance} linear extension above this
   float slopeLow;       // log-log slope of low linear extension
   float slopeHigh;      // log-log slope of high linear extension
 };
@@ -46,9 +46,9 @@ const SegmentedSplineParams_c5 RRT_PARAMS =
   { -4.0000000000, -4.0000000000, -3.1573765773, -0.4852499958, 1.8477324706, 1.8477324706 },
   // coefsHigh[6]
   { -0.7185482425, 2.0810307172, 3.6681241237, 4.0000000000, 4.0000000000, 4.0000000000 },
-  { 0.18*pow(2.,-15), 0.0001},    // minPoint
-  { 0.18,                4.8},    // midPoint  
-  { 0.18*pow(2., 18), 10000.},    // maxPoint
+  { log10(0.18*pow(2.,-15)), log10(0.0001)},    // minPoint
+  { log10(0.18),             log10(   4.8)},    // midPoint  
+  { log10(0.18*pow(2., 18)), log10(10000.)},    // maxPoint
   0.0,  // slopeLow
   0.0   // slopeHigh
 };
@@ -69,13 +69,13 @@ float segmented_spline_c5_fwd
 
   float logy;
 
-  if ( logx <= log10(C.minPoint.x) ) { 
+  if ( logx <= C.minPoint.x ) { 
 
-    logy = logx * C.slopeLow + ( log10(C.minPoint.y) - C.slopeLow * log10(C.minPoint.x) );
+    logy = logx * C.slopeLow + ( C.minPoint.y - C.slopeLow * C.minPoint.x );
 
-  } else if (( logx > log10(C.minPoint.x) ) && ( logx < log10(C.midPoint.x) )) {
+  } else if (( logx > C.minPoint.x ) && ( logx < C.midPoint.x )) {
 
-    float knot_coord = (N_KNOTS_LOW-1) * (logx-log10(C.minPoint.x))/(log10(C.midPoint.x)-log10(C.minPoint.x));
+    float knot_coord = (N_KNOTS_LOW-1) * (logx-C.minPoint.x)/(C.midPoint.x-C.minPoint.x);
     int j = knot_coord;
     float t = knot_coord - j;
 
@@ -107,9 +107,9 @@ float segmented_spline_c5_fwd
     float monomials[ 3] = { t * t, t, 1. };
     logy = dot_f3_f3( monomials, mult_f3_f33( cf, M));
 
-  } else if (( logx >= log10(C.midPoint.x) ) && ( logx < log10(C.maxPoint.x) )) {
+  } else if (( logx >= C.midPoint.x ) && ( logx < C.maxPoint.x )) {
 
-    float knot_coord = (N_KNOTS_HIGH-1) * (logx-log10(C.midPoint.x))/(log10(C.maxPoint.x)-log10(C.midPoint.x));
+    float knot_coord = (N_KNOTS_HIGH-1) * (logx-C.midPoint.x)/(C.maxPoint.x-C.midPoint.x);
     int j = knot_coord;
     float t = knot_coord - j;
 
@@ -141,9 +141,9 @@ float segmented_spline_c5_fwd
     float monomials[ 3] = { t * t, t, 1. };
     logy = dot_f3_f3( monomials, mult_f3_f33( cf, M));
 
-  } else { //if ( logIn >= log10(C.maxPoint.x) ) { 
+  } else { //if ( logx >= C.maxPoint.x ) { 
 
-    logy = logx * C.slopeHigh + ( log10(C.maxPoint.y) - C.slopeHigh * log10(C.maxPoint.x) );
+    logy = logx * C.slopeHigh + ( C.maxPoint.y - C.slopeHigh * C.maxPoint.x );
 
   }
 
@@ -161,8 +161,8 @@ float segmented_spline_c5_rev
   const int N_KNOTS_LOW = 4;
   const int N_KNOTS_HIGH = 4;
 
-  const float KNOT_INC_LOW = (log10(C.midPoint.x) - log10(C.minPoint.x)) / (N_KNOTS_LOW - 1.);
-  const float KNOT_INC_HIGH = (log10(C.maxPoint.x) - log10(C.midPoint.x)) / (N_KNOTS_HIGH - 1.);
+  const float KNOT_INC_LOW = (C.midPoint.x - C.minPoint.x) / (N_KNOTS_LOW - 1.);
+  const float KNOT_INC_HIGH = (C.maxPoint.x - C.midPoint.x) / (N_KNOTS_HIGH - 1.);
   
   // KNOT_Y is luminance of the spline at each knot
   float KNOT_Y_LOW[ N_KNOTS_LOW];
@@ -178,11 +178,11 @@ float segmented_spline_c5_rev
   float logy = log10( max(y,1e-10));
 
   float logx;
-  if (logy <= log10(C.minPoint.y)) {
+  if (logy <= C.minPoint.y) {
 
-    logx = log10(C.minPoint.x);
+    logx = C.minPoint.x;
 
-  } else if ( (logy > log10(C.minPoint.y)) && (logy <= log10(C.midPoint.y)) ) {
+  } else if ( (logy > C.minPoint.y) && (logy <= C.midPoint.y) ) {
 
     unsigned int j;
     float cf[ 3];
@@ -205,9 +205,9 @@ float segmented_spline_c5_rev
 
     const float t = ( 2. * c) / ( -d - b);
 
-    logx = log10(C.minPoint.x) + ( t + j) * KNOT_INC_LOW;
+    logx = C.minPoint.x + ( t + j) * KNOT_INC_LOW;
 
-  } else if ( (logy > log10(C.midPoint.y)) && (logy < log10(C.maxPoint.y)) ) {
+  } else if ( (logy > C.midPoint.y) && (logy < C.maxPoint.y) ) {
 
     unsigned int j;
     float cf[ 3];
@@ -230,11 +230,11 @@ float segmented_spline_c5_rev
 
     const float t = ( 2. * c) / ( -d - b);
 
-    logx = log10(C.midPoint.x) + ( t + j) * KNOT_INC_HIGH;
+    logx = C.midPoint.x + ( t + j) * KNOT_INC_HIGH;
 
-  } else { //if ( logy >= log10(C.maxPoint.y) ) {
+  } else { //if ( logy >= C.maxPoint.y ) {
 
-    logx = log10(C.maxPoint.x);
+    logx = C.maxPoint.x;
 
   }
   
@@ -253,9 +253,9 @@ const SegmentedSplineParams_c9 ODT_48nits =
   { -1.6989700043, -1.6989700043, -1.4779000000, -1.2291000000, -0.8648000000, -0.4480000000, 0.0051800000, 0.4511080334, 0.9113744414, 0.9113744414},
   // coefsHigh[10]
   { 0.5154386965, 0.8470437783, 1.1358000000, 1.3802000000, 1.5197000000, 1.5985000000, 1.6467000000, 1.6746091357, 1.6878733390, 1.6878733390 },
-  {segmented_spline_c5_fwd( 0.18*pow(2.,-6.5) ),  0.02},    // minPoint
-  {segmented_spline_c5_fwd( 0.18 ),                4.8},    // midPoint  
-  {segmented_spline_c5_fwd( 0.18*pow(2.,6.5) ),   48.0},    // maxPoint
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,-6.5) )),  log10(0.02)},    // minPoint
+  {log10(segmented_spline_c5_fwd( 0.18 )),               log10( 4.8)},    // midPoint  
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,6.5) )),   log10(48.0)},    // maxPoint
   0.0,  // slopeLow
   0.04  // slopeHigh
 };
@@ -266,9 +266,9 @@ const SegmentedSplineParams_c9 ODT_1000nits =
   { -4.9706219331, -3.0293780669, -2.1262, -1.5105, -1.0578, -0.4668, 0.11938, 0.7088134201, 1.2911865799, 1.2911865799 },
   // coefsHigh[10]
   { 0.8089132070, 1.1910867930, 1.5683, 1.9483, 2.3083, 2.6384, 2.8595, 2.9872608805, 3.0127391195, 3.0127391195 },
-  {segmented_spline_c5_fwd( 0.18*pow(2.,-12.) ), 0.0001},    // minPoint
-  {segmented_spline_c5_fwd( 0.18 ),                10.0},    // midPoint  
-  {segmented_spline_c5_fwd( 0.18*pow(2.,10.) ),  1000.0},    // maxPoint
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,-12.) )), log10(0.0001)},    // minPoint
+  {log10(segmented_spline_c5_fwd( 0.18 )),              log10(  10.0)},    // midPoint  
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,10.) )),  log10(1000.0)},    // maxPoint
   3.0,  // slopeLow
   0.06  // slopeHigh
 };
@@ -279,9 +279,9 @@ const SegmentedSplineParams_c9 ODT_2000nits =
   { -4.9706219331, -3.0293780669, -2.1262, -1.5105, -1.0578, -0.4668, 0.11938, 0.7088134201, 1.2911865799, 1.2911865799 },
   // coefsHigh[10]
   { 0.8019952042, 1.1980047958, 1.5943000000, 1.9973000000, 2.3783000000, 2.7684000000, 3.0515000000, 3.2746293562, 3.3274306351, 3.3274306351 },
-  {segmented_spline_c5_fwd( 0.18*pow(2.,-12.) ), 0.0001},    // minPoint
-  {segmented_spline_c5_fwd( 0.18 ),                10.0},    // midPoint  
-  {segmented_spline_c5_fwd( 0.18*pow(2.,11.) ),  2000.0},    // maxPoint
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,-12.) )), log10(0.0001)},    // minPoint
+  {log10(segmented_spline_c5_fwd( 0.18 )),              log10(  10.0)},    // midPoint  
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,11.) )),  log10(2000.0)},    // maxPoint
   3.0,  // slopeLow
   0.12  // slopeHigh
 };
@@ -292,9 +292,9 @@ const SegmentedSplineParams_c9 ODT_4000nits =
   { -4.9706219331, -3.0293780669, -2.1262, -1.5105, -1.0578, -0.4668, 0.11938, 0.7088134201, 1.2911865799, 1.2911865799 },
   // coefsHigh[10]
   { 0.7973186613, 1.2026813387, 1.6093000000, 2.0108000000, 2.4148000000, 2.8179000000, 3.1725000000, 3.5344995451, 3.6696204376, 3.6696204376 },
-  {segmented_spline_c5_fwd( 0.18*pow(2.,-12.) ), 0.0001},    // minPoint
-  {segmented_spline_c5_fwd( 0.18 ),                10.0},    // midPoint  
-  {segmented_spline_c5_fwd( 0.18*pow(2.,12.) ),  4000.0},    // maxPoint
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,-12.) )), log10(0.0001)},    // minPoint
+  {log10(segmented_spline_c5_fwd( 0.18 )),              log10(  10.0)},    // midPoint  
+  {log10(segmented_spline_c5_fwd( 0.18*pow(2.,12.) )),  log10(4000.0)},    // maxPoint
   3.0,  // slopeLow
   0.3   // slopeHigh
 };
@@ -328,13 +328,13 @@ float segmented_spline_c9_fwd
 
   float logy;
 
-  if ( logx <= log10(C.minPoint.x) ) { 
+  if ( logx <= C.minPoint.x ) { 
 
-    logy = logx * C.slopeLow + ( log10(C.minPoint.y) - C.slopeLow * log10(C.minPoint.x) );
+    logy = logx * C.slopeLow + ( C.minPoint.y - C.slopeLow * C.minPoint.x );
 
-  } else if (( logx > log10(C.minPoint.x) ) && ( logx < log10(C.midPoint.x) )) {
+  } else if (( logx > C.minPoint.x ) && ( logx < C.midPoint.x )) {
 
-    float knot_coord = (N_KNOTS_LOW-1) * (logx-log10(C.minPoint.x))/(log10(C.midPoint.x)-log10(C.minPoint.x));
+    float knot_coord = (N_KNOTS_LOW-1) * (logx-C.minPoint.x)/(C.midPoint.x-C.minPoint.x);
     int j = knot_coord;
     float t = knot_coord - j;
 
@@ -366,9 +366,9 @@ float segmented_spline_c9_fwd
     float monomials[ 3] = { t * t, t, 1. };
     logy = dot_f3_f3( monomials, mult_f3_f33( cf, M));
 
-  } else if (( logx >= log10(C.midPoint.x) ) && ( logx < log10(C.maxPoint.x) )) {
+  } else if (( logx >= C.midPoint.x ) && ( logx < C.maxPoint.x )) {
 
-    float knot_coord = (N_KNOTS_HIGH-1) * (logx-log10(C.midPoint.x))/(log10(C.maxPoint.x)-log10(C.midPoint.x));
+    float knot_coord = (N_KNOTS_HIGH-1) * (logx-C.midPoint.x)/(C.maxPoint.x-C.midPoint.x);
     int j = knot_coord;
     float t = knot_coord - j;
 
@@ -400,9 +400,9 @@ float segmented_spline_c9_fwd
     float monomials[ 3] = { t * t, t, 1. };
     logy = dot_f3_f3( monomials, mult_f3_f33( cf, M));
 
-  } else { //if ( logIn >= log10(C.maxPoint.x) ) { 
+  } else { //if ( logx >= C.maxPoint.x ) { 
 
-    logy = logx * C.slopeHigh + ( log10(C.maxPoint.y) - C.slopeHigh * log10(C.maxPoint.x) );
+    logy = logx * C.slopeHigh + ( C.maxPoint.y - C.slopeHigh * C.maxPoint.x );
 
   }
 
@@ -420,8 +420,8 @@ float segmented_spline_c9_rev
   const int N_KNOTS_LOW = 8;
   const int N_KNOTS_HIGH = 8;
 
-  const float KNOT_INC_LOW = (log10(C.midPoint.x) - log10(C.minPoint.x)) / (N_KNOTS_LOW - 1.);
-  const float KNOT_INC_HIGH = (log10(C.maxPoint.x) - log10(C.midPoint.x)) / (N_KNOTS_HIGH - 1.);
+  const float KNOT_INC_LOW = (C.midPoint.x - C.minPoint.x) / (N_KNOTS_LOW - 1.);
+  const float KNOT_INC_HIGH = (C.maxPoint.x - C.midPoint.x) / (N_KNOTS_HIGH - 1.);
   
   // KNOT_Y is luminance of the spline at each knot
   float KNOT_Y_LOW[ N_KNOTS_LOW];
@@ -437,11 +437,11 @@ float segmented_spline_c9_rev
   float logy = log10( max( y, 1e-10));
 
   float logx;
-  if (logy <= log10(C.minPoint.y)) {
+  if (logy <= C.minPoint.y) {
 
-    logx = log10(C.minPoint.x);
+    logx = C.minPoint.x;
 
-  } else if ( (logy > log10(C.minPoint.y)) && (logy <= log10(C.midPoint.y)) ) {
+  } else if ( (logy > C.minPoint.y) && (logy <= C.midPoint.y) ) {
 
     unsigned int j;
     float cf[ 3];
@@ -472,9 +472,9 @@ float segmented_spline_c9_rev
 
     const float t = ( 2. * c) / ( -d - b);
 
-    logx = log10(C.minPoint.x) + ( t + j) * KNOT_INC_LOW;
+    logx = C.minPoint.x + ( t + j) * KNOT_INC_LOW;
 
-  } else if ( (logy > log10(C.midPoint.y)) && (logy < log10(C.maxPoint.y)) ) {
+  } else if ( (logy > C.midPoint.y) && (logy < C.maxPoint.y) ) {
 
     unsigned int j;
     float cf[ 3];
@@ -505,11 +505,11 @@ float segmented_spline_c9_rev
 
     const float t = ( 2. * c) / ( -d - b);
 
-    logx = log10(C.midPoint.x) + ( t + j) * KNOT_INC_HIGH;
+    logx = C.midPoint.x + ( t + j) * KNOT_INC_HIGH;
 
-  } else { //if ( logy >= log10(C.maxPoint.y) ) {
+  } else { //if ( logy >= C.maxPoint.y ) {
 
-    logx = log10(C.maxPoint.x);
+    logx = C.maxPoint.x;
 
   }
   
